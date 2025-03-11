@@ -1,5 +1,28 @@
 package main
 
-func main() {
+import (
+	"fmt"
+	"github.com/GFLdev/gorrent/pkg/bencode"
+	"github.com/GFLdev/gorrent/pkg/bittorrent"
+	"github.com/GFLdev/gorrent/pkg/utils"
+)
 
+func main() {
+	payload, err := utils.ReadFile("debian.torrent")
+	if err != nil {
+		panic(err)
+	}
+
+	torr := new(bittorrent.Torrent)
+	err = bencode.Unmarshal(payload, torr)
+	if err != nil {
+		panic(err)
+	}
+
+	url, err := torr.GetTrackerURL([20]byte{}, 6881)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(url)
 }

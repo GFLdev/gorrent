@@ -2,15 +2,16 @@ package bencode
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 )
 
-func setValues(val reflect.Value, decodedMap *interface{}, v any) error {
+func mapDecodeValues(val reflect.Value, decodedMap *interface{}, v any) error {
 	for i := 0; i < val.NumField(); i++ {
 		f := val.Type().Field(i)
 
 		bencodeField := f.Tag.Get("bencode")
-		if bencodeField != "" {
+		if bencodeField == "" {
 			continue
 		}
 
@@ -21,13 +22,21 @@ func setValues(val reflect.Value, decodedMap *interface{}, v any) error {
 
 		structField := val.Field(i)
 		if structField.Kind() == reflect.Struct {
-			err := setValues(structField, &decodedVal, v)
+			err := mapDecodeValues(structField, &decodedVal, v)
 			if err != nil {
 				return err
 			}
 			continue
 		}
 		if structField.CanSet() {
+			if !reflect.TypeOf(decodedVal).AssignableTo(structField.Type()) {
+				return fmt.Errorf(
+					"cannot assign decoded value to field '%s': expected %s, got %s",
+					bencodeField,
+					structField.Type(),
+					reflect.TypeOf(decodedVal),
+				)
+			}
 			structField.Set(reflect.ValueOf(decodedVal))
 		}
 	}
@@ -54,5 +63,5 @@ func Unmarshal(data []byte, v any) error {
 	}
 
 	val := reflect.ValueOf(v).Elem()
-	return setValues(val, &decoded, val)
+	return mapDecodeValues(val, &decoded, val)
 }
