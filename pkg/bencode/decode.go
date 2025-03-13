@@ -15,25 +15,6 @@ func newReader(data []byte) *bReader {
 	return &bReader{data: data, pos: 0}
 }
 
-func (r *bReader) decodeElement() (interface{}, error) {
-	if r.data[r.pos:] == nil || len(r.data[r.pos:]) == 0 {
-		return nil, errors.New("entry is empty")
-	}
-
-	switch firstChar := r.data[r.pos]; {
-	case firstChar == 'i':
-		return r.decodeInt()
-	case firstChar == 'l':
-		return r.decodeList()
-	case firstChar == 'd':
-		return r.decodeDict()
-	case firstChar >= '0' && firstChar <= '9':
-		return r.decodeString()
-	default:
-		return nil, errors.New("invalid type encountered: character not 'i', 'l', 'd', or '0'-'9'")
-	}
-}
-
 func (r *bReader) readUntil(delim byte) ([]byte, error) {
 	start := r.pos
 	for r.pos < len(r.data) {
@@ -138,6 +119,25 @@ func (r *bReader) decodeDict() (map[string]interface{}, error) {
 	}
 
 	return dict, nil
+}
+
+func (r *bReader) decodeElement() (interface{}, error) {
+	if r.data[r.pos:] == nil || len(r.data[r.pos:]) == 0 {
+		return nil, errors.New("entry is empty")
+	}
+
+	switch firstChar := r.data[r.pos]; {
+	case firstChar == 'i':
+		return r.decodeInt()
+	case firstChar == 'l':
+		return r.decodeList()
+	case firstChar == 'd':
+		return r.decodeDict()
+	case firstChar >= '0' && firstChar <= '9':
+		return r.decodeString()
+	default:
+		return nil, errors.New("invalid type encountered: character not 'i', 'l', 'd', or '0'-'9'")
+	}
 }
 
 func Decode(s []byte) (interface{}, error) {

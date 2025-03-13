@@ -19,10 +19,10 @@ func main() {
 		panic(err)
 	}
 
-	url, err := torr.GetTrackerURL([20]byte{}, 6881)
+	_, err = bencode.Marshal(torr)
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println(url)
+	fmt.Println(torr.CalculateInfoHash())
 }
