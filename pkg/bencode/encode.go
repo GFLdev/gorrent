@@ -1,9 +1,9 @@
 package bencode
 
 import (
-	"bytes"
 	"fmt"
 	"reflect"
+	"sort"
 	"strconv"
 	"sync"
 )
@@ -18,40 +18,6 @@ func formatErrorSlice(errs []error) string {
 	}
 	str = str[:len(str)-1]
 	return str
-}
-
-func insertSortKVS(kv []byte, kvs *[][]byte) {
-	// Binary search
-	var idx int
-	for l := 0; l < len(*kvs); l++ {
-		if len((*kvs)[l]) == 0 {
-			idx = l // default: insert at the end
-			break
-		}
-	}
-	l := 0
-	r := len(*kvs) - 1
-	for l <= r {
-		m := (l + r) / 2
-		if bytes.Compare(kv, (*kvs)[m]) == -1 { // less than
-			r = m - 1
-		} else if bytes.Compare(kv, (*kvs)[m]) == 1 { // greater than
-			l = m + 1
-		} else {
-			idx = m
-			break
-		}
-	}
-
-	// Insertion sort with previously sorted slice
-	// Copy to buffer
-	buf := make([][]byte, len((*kvs)[idx:]))
-	copy(buf, (*kvs)[idx:])
-
-	// Copy to slice
-	(*kvs)[idx] = kv
-	copy((*kvs)[idx+1:], buf)
-	return
 }
 
 func encodeString(v interface{}) ([]byte, error) {
@@ -141,23 +107,30 @@ func encodeMap(v interface{}) ([]byte, error) {
 	var mux sync.Mutex
 	var errs []error
 
-	// Type check and create map[string]interface
+	// Type check and create keys and values array
 	if reflect.ValueOf(v).Kind() != reflect.Map {
 		return nil, fmt.Errorf("cannot encode map: expected map, got %s", reflect.TypeOf(v))
 	}
+
+	sortedKeys := make([]string, reflect.ValueOf(v).Len())
 	m := make(map[string]interface{}, reflect.ValueOf(v).Len())
-	for _, k := range reflect.ValueOf(v).MapKeys() {
+	for i, k := range reflect.ValueOf(v).MapKeys() {
+		sortedKeys[i] = k.String()
 		m[k.String()] = reflect.ValueOf(v).MapIndex(k).Interface()
 	}
 
+	// Concurrently sort array
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		sort.Strings(sortedKeys)
+	}()
+
 	// Buffer and encoding each key-pair values concurrently
-	elem := make([][]byte, len(m))
 	totalBytes := 2
-	i := -1
 	wg.Add(len(m))
-	for k, v := range m {
-		i++
-		go func(key string, val interface{}, idx int) {
+	for key, val := range m {
+		go func(key string, val interface{}) {
 			defer wg.Done()
 
 			keyStr, err := encodeString(key)
@@ -177,10 +150,10 @@ func encodeMap(v interface{}) ([]byte, error) {
 			}
 
 			mux.Lock()
-			insertSortKVS(append(keyStr, valStr...), &elem)
+			m[key] = append(keyStr, valStr...)
 			totalBytes += len(keyStr) + len(valStr)
 			mux.Unlock()
-		}(k, v, i)
+		}(key, val)
 	}
 	wg.Wait()
 
@@ -190,9 +163,9 @@ func encodeMap(v interface{}) ([]byte, error) {
 
 	// Encoding the map
 	encoded := make([]byte, totalBytes)
-	i = copy(encoded[:], "d")
-	for _, val := range elem {
-		i += copy(encoded[i:], val)
+	i := copy(encoded[:], "d")
+	for _, key := range sortedKeys {
+		i += copy(encoded[i:], m[key].([]byte))
 	}
 	i += copy(encoded[i:], "e")
 	return encoded, nil

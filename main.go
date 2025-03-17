@@ -2,27 +2,39 @@ package main
 
 import (
 	"fmt"
-	"github.com/GFLdev/gorrent/pkg/bencode"
 	"github.com/GFLdev/gorrent/pkg/bittorrent"
-	"github.com/GFLdev/gorrent/pkg/utils"
+	"github.com/GFLdev/gorrent/pkg/logger"
+	"os"
 )
 
+const UsageMessage = "Usage:" +
+	"\n\tgorrent download <torrent-file>" +
+	"\n\tgorrent info <torrent-file>" +
+	"\n\tgorrent help"
+
 func main() {
-	payload, err := utils.ReadFile("debian.torrent")
-	if err != nil {
-		panic(err)
+	ctx := Context{
+		Logger:    logger.NewLogger(nil),
+		LocalPeer: &bittorrent.Peer{},
 	}
 
-	torr := new(bittorrent.Torrent)
-	err = bencode.Unmarshal(payload, torr)
-	if err != nil {
-		panic(err)
+	if len(os.Args) < 2 {
+		fmt.Println(UsageMessage)
+		os.Exit(2)
 	}
+	args := os.Args[1:]
 
-	_, err = bencode.Marshal(torr)
-	if err != nil {
-		panic(err)
+	switch args[0] {
+	case "info":
+		PrintTorrentInfo(args)
+	case "help":
+		fmt.Println(UsageMessage)
+	case "tracker":
+		PrintTrackerStatus(args)
+	case "download":
+		ctx.DownloadTorrent(args)
+	default:
+		fmt.Println(UsageMessage)
+		os.Exit(2)
 	}
-
-	fmt.Println(torr.CalculateInfoHash())
 }

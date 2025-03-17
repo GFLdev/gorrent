@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 )
 
@@ -18,6 +19,13 @@ func flushWriter(writer *bufio.Writer) {
 	err := writer.Flush()
 	if err != nil {
 		fmt.Printf("could not flush writer: %s\n", err.Error())
+	}
+}
+
+func closeBody(res *http.Response) {
+	err := res.Body.Close()
+	if err != nil {
+		fmt.Printf("could not close response body: %s\n", err.Error())
 	}
 }
 
@@ -51,14 +59,21 @@ func WriteFile(path string, content []byte) error {
 
 	writer := bufio.NewWriter(file)
 	defer flushWriter(writer)
-	for {
+	for len(content) > 0 {
 		n, err := writer.Write(content)
-		if err == io.EOF {
-			break
-		} else if err != nil {
+		if err != nil {
 			return fmt.Errorf("could not write to file %s: %w", path, err)
 		}
 		content = content[n:]
 	}
 	return nil
+}
+
+func ExtractResponseData(res *http.Response) ([]byte, error) {
+	defer closeBody(res)
+	data, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, fmt.Errorf("could not read response body: %w", err)
+	}
+	return data, nil
 }

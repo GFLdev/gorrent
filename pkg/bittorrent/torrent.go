@@ -1,15 +1,13 @@
 package bittorrent
 
 import (
-	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
 	"github.com/GFLdev/gorrent/pkg/bencode"
-	"net/url"
-	"strconv"
+	"github.com/GFLdev/gorrent/pkg/utils"
 )
 
-type Torrent struct {
+type TorrentFile struct {
 	Announce     string   `bencode:"announce"`
 	CreationDate int      `bencode:"creation date"`
 	Comment      string   `bencode:"comment"`
@@ -25,34 +23,80 @@ type info struct {
 	Name        string `bencode:"name"`
 }
 
-func (t *Torrent) GetTrackerURL(peerID [20]byte, port uint16) (string, error) {
-	base, err := url.Parse(t.Announce)
-	if err != nil {
-		return "", fmt.Errorf("could not parse announce url: %w", err)
-	}
-
-	params := url.Values{
-		"info_hash":  []string{t.Info.Pieces},
-		"peer_id":    []string{string(peerID[:])},
-		"port":       []string{strconv.Itoa(int(port))},
-		"uploaded":   []string{"0"},
-		"downloaded": []string{"0"},
-		"compact":    []string{"1"},
-		"left":       []string{strconv.Itoa(t.Info.Length)},
-	}
-	base.RawQuery = params.Encode()
-	return base.String(), nil
+type TorrentInfo struct {
+	Name        string
+	TrackerURL  string
+	Length      int
+	InfoHash    string
+	PieceLength int
+	PieceHashes []string
 }
 
-func (t *Torrent) CalculateInfoHash() (string, error) {
+func TorrentFromFile(torrentPath string) (*TorrentFile, error) {
+	torrentFile, err := utils.ReadFile(torrentPath)
+	if err != nil {
+		return nil, fmt.Errorf("could not read torrent file: %s\n", err.Error())
+	}
+	torrent := &TorrentFile{}
+
+	err = bencode.Unmarshal(torrentFile, torrent)
+	if err != nil {
+		return nil, fmt.Errorf("could not parse torrent file: %s\n", err.Error())
+	}
+	return torrent, nil
+}
+
+func (t *TorrentFile) CalculateInfoHash() ([]byte, error) {
 	// Bencode info dictionary
 	infoBCode, err := bencode.Marshal(&t.Info)
 	if err != nil {
-		return "", fmt.Errorf("could not calculate info hash: %w", err)
+		return nil, fmt.Errorf("could not calculate info hash: %w", err)
 	}
 
 	// Calculate SHA-1 hash
-	h := sha1.New()
-	h.Write(infoBCode)
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return utils.SHA1Encode(infoBCode), nil
+}
+
+func GetTorrentInfo(torrentPath string) (TorrentInfo, error) {
+	// Read file
+	torrentFile, err := utils.ReadFile(torrentPath)
+	if err != nil {
+		return TorrentInfo{}, fmt.Errorf("could not get torrent info: %w", err)
+	}
+
+	// Unmarshal torrent to struct
+	var torr TorrentFile
+	err = bencode.Unmarshal(torrentFile, &torr)
+	if err != nil {
+		return TorrentInfo{}, fmt.Errorf("could not get torrent info: %w", err)
+	}
+
+	// Check valid pieces
+	if len(torr.Info.Pieces)%20 != 0 {
+		return TorrentInfo{}, fmt.Errorf("could not get torrent info: invalid pieces")
+	}
+
+	idx := 0
+	pieceHashes := make([]string, len(torr.Info.Pieces)/20)
+	for i := 0; i < len(torr.Info.Pieces); i += 20 {
+		pieceHashes[idx] = torr.Info.Pieces[i : i+20]
+		idx++
+	}
+
+	// Calculate info hash
+	infoHash, err := torr.CalculateInfoHash()
+	if err != nil {
+		return TorrentInfo{}, fmt.Errorf("could not get torrent info: %w", err)
+	}
+
+	// Struct info
+	torrentInfo := TorrentInfo{
+		Name:        torr.Info.Name,
+		TrackerURL:  torr.Announce,
+		Length:      torr.Info.Length,
+		InfoHash:    hex.EncodeToString(infoHash),
+		PieceLength: torr.Info.PieceLength,
+		PieceHashes: pieceHashes,
+	}
+	return torrentInfo, nil
 }
