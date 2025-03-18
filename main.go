@@ -7,32 +7,32 @@ import (
 	"os"
 )
 
+// UsageMessage is a constant string that provides usage instructions for the gorrent command-line tool.
 const UsageMessage = "Usage:" +
 	"\n\tgorrent download <torrent-file>" +
 	"\n\tgorrent info <torrent-file>" +
 	"\n\tgorrent help"
 
-func main() {
-	ctx := Context{
-		Logger:    logger.NewLogger(nil),
-		LocalPeer: &bittorrent.Peer{},
-	}
-
-	if len(os.Args) < 2 {
+// CheckArgsLength validates the length of the args slice against specified min and max values.
+func CheckArgsLength(args []string, min int, max int) {
+	if len(args) < min || len(args) > max {
 		fmt.Println(UsageMessage)
 		os.Exit(2)
 	}
-	args := os.Args[1:]
+}
 
-	switch args[0] {
+func main() {
+	app := NewApp(logger.NewLogger(nil), &bittorrent.Peer{})
+
+	switch app.Args[0] {
 	case "info":
-		PrintTorrentInfo(args)
+		app.TorrentInfo()
 	case "help":
 		fmt.Println(UsageMessage)
 	case "tracker":
-		PrintTrackerStatus(args)
+		app.TrackerStatus()
 	case "download":
-		ctx.DownloadTorrent(args)
+		app.DownloadTorrent()
 	default:
 		fmt.Println(UsageMessage)
 		os.Exit(2)

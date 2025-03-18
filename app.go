@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"github.com/GFLdev/gorrent/pkg/bittorrent"
 	"github.com/GFLdev/gorrent/pkg/logger"
@@ -8,51 +9,59 @@ import (
 	"os"
 )
 
-type Context struct {
-	Logger    *logger.Logger
-	LocalPeer *bittorrent.Peer
+type App struct {
+	Logger       *logger.Logger
+	LocalPeer    *bittorrent.Peer
+	Args         []string
+	PeersTimeout int
 }
 
-func PrintTorrentInfo(args []string) {
-	if len(args) < 2 {
-		fmt.Println(UsageMessage)
-		os.Exit(1)
+func NewApp(lgr *logger.Logger, localPeer *bittorrent.Peer) *App {
+	// Get OS args
+	CheckArgsLength(os.Args, 2, 999)
+	args := os.Args[1:]
+
+	// Check for timeout flag
+	timeout := flag.Int("t", 0, "Timeout in seconds")
+	flag.Parse()
+	println(*timeout)
+	return &App{
+		Logger:       lgr,
+		LocalPeer:    localPeer,
+		Args:         args,
+		PeersTimeout: *timeout,
 	}
-	torrentInfo, err := bittorrent.GetTorrentInfo(args[1])
+}
+
+func (app *App) TorrentInfo() {
+	CheckArgsLength(app.Args, 2, 2)
+
+	torrent, err := bittorrent.TorrentFromFile(app.Args[1])
 	if err != nil {
 		fmt.Printf(err.Error())
 		os.Exit(1)
 	}
-	fmt.Println("Name:", torrentInfo.Name)
-	fmt.Println("Tracker URL:", torrentInfo.TrackerURL)
-	fmt.Println("Length:", torrentInfo.Length)
-	fmt.Println("Info Hash:", torrentInfo.InfoHash)
-	fmt.Println("Piece Length:", torrentInfo.PieceLength)
-	fmt.Println("Piece Hashes:")
-	for n, hash := range torrentInfo.PieceHashes {
-		if n == 4 {
-			fmt.Printf("... (%d more)", len(torrentInfo.PieceHashes)-n)
-			break
-		}
-		fmt.Printf("%x\n", hash)
+
+	torrentInfo, err := bittorrent.GetTorrentMetadata(torrent)
+	if err != nil {
+		fmt.Printf(err.Error())
+		os.Exit(1)
 	}
+	fmt.Println(torrentInfo.String())
 }
 
-func PrintTrackerStatus(args []string) {
-	torrent, err := bittorrent.TorrentFromFile(args[1])
+func (app *App) TrackerStatus() {
+	torrent, err := bittorrent.TorrentFromFile(app.Args[1])
 	if err != nil {
 		fmt.Printf(err.Error())
 		os.Exit(1)
 	}
 
 	// Create new local peer
-	localPeer := bittorrent.Peer{
-		IP:   net.IP{127, 0, 0, 1},
-		Port: 6881,
-	}
+	localPeer := bittorrent.NewPeer(net.IPv4zero, 6881, 0)
 
 	// Tracker request
-	res, err := torrent.AnnounceToTracker(&localPeer)
+	res, err := torrent.AnnounceToTracker(localPeer, app.PeersTimeout)
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
@@ -65,19 +74,16 @@ func PrintTrackerStatus(args []string) {
 	}
 }
 
-func (ctx *Context) DownloadTorrent(args []string) {
+func (app *App) DownloadTorrent() {
 	// Get torrent
-	torrent, err := bittorrent.TorrentFromFile(args[1])
+	torrent, err := bittorrent.TorrentFromFile(app.Args[1])
 	if err != nil {
 		fmt.Printf(err.Error())
 		os.Exit(1)
 	}
 
 	// Create new local peer
-	localPeer := bittorrent.Peer{
-		IP:   net.IP{127, 0, 0, 1},
-		Port: 6881,
-	}
+	localPeer := bittorrent.NewPeer(net.IPv4zero, 6881, 0)
 	peerId, err := bittorrent.GeneratePeerID()
 	if err != nil {
 		fmt.Println(err.Error())
@@ -85,7 +91,7 @@ func (ctx *Context) DownloadTorrent(args []string) {
 	}
 
 	// Tracker request
-	res, err := torrent.AnnounceToTracker(&localPeer)
+	res, err := torrent.AnnounceToTracker(localPeer, app.PeersTimeout)
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
@@ -98,7 +104,7 @@ func (ctx *Context) DownloadTorrent(args []string) {
 		os.Exit(1)
 	}
 	handshake := bittorrent.Handshake{
-		Protocol: bittorrent.BitTorrentProtocol,
+		Protocol: bittorrent.TorrentProtocol,
 		InfoHash: [20]byte(infoHash),
 		PeerID:   [20]byte(peerId),
 	}
@@ -112,7 +118,7 @@ func (ctx *Context) DownloadTorrent(args []string) {
 		}
 		fmt.Println("Connected to peer:", peer.String())
 
-		fmt.Println("Sending handshake...:", handshake.SerializeHandshake())
+		fmt.Println("Sending handshake...:", string(handshake.SerializeHandshake()))
 		err = peer.Write(handshake.SerializeHandshake())
 		if err != nil {
 			fmt.Println(err.Error())
@@ -127,14 +133,13 @@ func (ctx *Context) DownloadTorrent(args []string) {
 			fmt.Println(err.Error())
 			continue
 		}
-		fmt.Println("Handshake received!", buf)
+		fmt.Println("Handshake received!", string(buf))
 
 		resHandshake, err := bittorrent.DeserializeHandshake(buf)
 		if err != nil {
 			fmt.Println(err.Error())
 			continue
 		}
-		fmt.Println(resHandshake)
-		break
+		fmt.Println("Peer ID:", string(resHandshake.PeerID[:]))
 	}
 }

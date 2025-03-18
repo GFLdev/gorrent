@@ -8,6 +8,7 @@ import (
 	"sync"
 )
 
+// formatErrorSlice formats a slice of errors into a single string, enumerating each error with its index in the slice.
 func formatErrorSlice(errs []error) string {
 	if len(errs) == 1 {
 		return errs[0].Error()
@@ -20,6 +21,7 @@ func formatErrorSlice(errs []error) string {
 	return str
 }
 
+// encodeString encodes a string into a byte slice as bencode string.
 func encodeString(v interface{}) ([]byte, error) {
 	s, ok := v.(string)
 	if !ok {
@@ -36,6 +38,7 @@ func encodeString(v interface{}) ([]byte, error) {
 	return encoded, nil
 }
 
+// encodeInt encodes an integer into a byte slice as bencode integer.
 func encodeInt(v interface{}) ([]byte, error) {
 	i, ok := v.(int)
 	if !ok {
@@ -51,6 +54,7 @@ func encodeInt(v interface{}) ([]byte, error) {
 	return encoded, nil
 }
 
+// encodeList encodes an array into a byte slice as bencode list.
 func encodeList(v interface{}) ([]byte, error) {
 	var wg sync.WaitGroup
 	var mux sync.Mutex
@@ -102,6 +106,7 @@ func encodeList(v interface{}) ([]byte, error) {
 	return encoded, nil
 }
 
+// encodeLMap encodes a map into a byte slice as bencode dictionary.
 func encodeMap(v interface{}) ([]byte, error) {
 	var wg sync.WaitGroup
 	var mux sync.Mutex
@@ -171,6 +176,7 @@ func encodeMap(v interface{}) ([]byte, error) {
 	return encoded, nil
 }
 
+// Encode encodes a value into a byte slice using bencode format. Supported types are string, int, slice, and map.
 func Encode(v interface{}) ([]byte, error) {
 	if v == nil {
 		return nil, nil

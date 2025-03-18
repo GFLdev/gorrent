@@ -2,14 +2,20 @@ package bittorrent
 
 import "fmt"
 
-const BitTorrentProtocol = "BitTorrent protocol"
+// TorrentProtocol represents the protocol identifier string used in BitTorrent communications.
+const TorrentProtocol = "BitTorrent protocol"
 
+// Handshake represents the initial handshake message exchanged between peers in a peer-to-peer network.
 type Handshake struct {
+	// Protocol specifies the protocol identifier.
 	Protocol string
+	// InfoHash contains the SHA-1 hash of the torrent's info dictionary.
 	InfoHash [20]byte
-	PeerID   [20]byte
+	// PeerID is a unique identifier for the peer.
+	PeerID [20]byte
 }
 
+// DeserializeHandshake parses a serialized handshake buffer and returns the Handshake struct.
 func DeserializeHandshake(buf []byte) (*Handshake, error) {
 	if len(buf) == 0 {
 		return nil, fmt.Errorf("empty buffer")
@@ -32,6 +38,7 @@ func DeserializeHandshake(buf []byte) (*Handshake, error) {
 	return h, nil
 }
 
+// SerializeHandshake serializes the Handshake structure into a byte slice for network transmission.
 func (h *Handshake) SerializeHandshake() []byte {
 	i := 1
 	buf := make([]byte, len(h.Protocol)+49)

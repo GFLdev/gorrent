@@ -6,15 +6,21 @@ import (
 	"strconv"
 )
 
+// bReader is a struct for reading and decoding bencoded data from a byte slice.
 type bReader struct {
+	// data holds the byte slice representing the bencoded data to be parsed and decoded.
 	data []byte
-	pos  int
+	// pos holds the current reading position in the bencoded data slice.
+	pos int
 }
 
+// newReader initializes and returns a new bReader for reading and decoding bencoded data from the provided byte slice.
 func newReader(data []byte) *bReader {
 	return &bReader{data: data, pos: 0}
 }
 
+// readUntil reads bytes from the current position up to and including the specified delimiter.
+// Returns the read bytes and advances the read position.
 func (r *bReader) readUntil(delim byte) ([]byte, error) {
 	start := r.pos
 	for r.pos < len(r.data) {
@@ -27,6 +33,7 @@ func (r *bReader) readUntil(delim byte) ([]byte, error) {
 	return nil, errors.New("missing delimiter")
 }
 
+// decodeInt decodes a bencoded integer from the current position in the data and returns it as an int.
 func (r *bReader) decodeInt() (int, error) {
 	s, err := r.readUntil('e')
 	if err != nil {
@@ -44,6 +51,7 @@ func (r *bReader) decodeInt() (int, error) {
 	return integer, nil
 }
 
+// decodeString decodes a bencoded string from the current position in the data and returns it as a string.
 func (r *bReader) decodeString() (string, error) {
 	lenStr, err := r.readUntil(':')
 	if err != nil {
@@ -68,6 +76,7 @@ func (r *bReader) decodeString() (string, error) {
 	return string(r.data[start:end]), nil
 }
 
+// decodeList decodes a bencoded list from the current position in the data and returns it as a slice of interfaces.
 func (r *bReader) decodeList() ([]interface{}, error) {
 	list := make([]interface{}, 0)
 	r.pos++
@@ -81,7 +90,7 @@ func (r *bReader) decodeList() ([]interface{}, error) {
 			break
 		}
 
-		val, err := r.decodeElement()
+		val, err := r.decodeElement() // decode list element
 		if err != nil {
 			return nil, err
 		}
@@ -92,6 +101,8 @@ func (r *bReader) decodeList() ([]interface{}, error) {
 	return list, nil
 }
 
+// decodeDict decodes a bencoded dictionary from the current position in the data and returns it as a
+// map[string]interface{}.
 func (r *bReader) decodeDict() (map[string]interface{}, error) {
 	dict := make(map[string]interface{})
 	r.pos++
@@ -105,12 +116,12 @@ func (r *bReader) decodeDict() (map[string]interface{}, error) {
 			break
 		}
 
-		key, err := r.decodeString()
+		key, err := r.decodeString() // decode map key (must be a string)
 		if err != nil {
 			return nil, fmt.Errorf("could not decode dict key: %w", err)
 		}
 
-		val, err := r.decodeElement()
+		val, err := r.decodeElement() // decode map value
 		if err != nil {
 			return nil, fmt.Errorf("could not decode dict value: %w", err)
 		}
@@ -121,6 +132,7 @@ func (r *bReader) decodeDict() (map[string]interface{}, error) {
 	return dict, nil
 }
 
+// decodeElement decodes a generic bencoded element at the current position and returns it as an interface.
 func (r *bReader) decodeElement() (interface{}, error) {
 	if r.data[r.pos:] == nil || len(r.data[r.pos:]) == 0 {
 		return nil, errors.New("entry is empty")
@@ -140,6 +152,7 @@ func (r *bReader) decodeElement() (interface{}, error) {
 	}
 }
 
+// Decode parses a bencoded byte slice and returns the decoded value as an interface or an error, if decoding fails.
 func Decode(s []byte) (interface{}, error) {
 	val, err := newReader(s).decodeElement()
 	if err != nil {

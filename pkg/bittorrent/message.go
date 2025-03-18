@@ -1,5 +1,6 @@
 package bittorrent
 
+// messageID represents a unique identifier for a specific type of message in a communication protocol.
 type messageID uint8
 
 const (
@@ -14,6 +15,7 @@ const (
 	Cancel
 )
 
+// Message represents a basic structure for communication containing an identifier and associated data.
 type Message struct {
 	ID   messageID
 	Data []byte
