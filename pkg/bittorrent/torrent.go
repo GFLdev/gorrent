@@ -64,8 +64,8 @@ func TorrentFromFile(torrentPath string) (*TorrentFile, error) {
 	return torrent, nil
 }
 
-// CalculateInfoHash generates and returns the SHA-1 hash of the bencoded info dictionary of the torrent.
-func (t *TorrentFile) CalculateInfoHash() ([]byte, error) {
+// InfoHash generates and returns the SHA-1 hash of the bencoded info dictionary of the torrent.
+func (t *TorrentFile) InfoHash() ([]byte, error) {
 	// Bencode info dictionary
 	infoBCode, err := bencode.Marshal(&t.Info)
 	if err != nil {
@@ -76,55 +76,55 @@ func (t *TorrentFile) CalculateInfoHash() ([]byte, error) {
 	return utils.SHA1Encode(infoBCode), nil
 }
 
-// GetTorrentMetadata extracts and returns metadata about a torrent.
-func GetTorrentMetadata(torr *TorrentFile) (TorrentMetadata, error) {
+// GetMetadata extracts and returns metadata about a torrent.
+func (t *TorrentFile) GetMetadata() (TorrentMetadata, error) {
 	// Check valid pieces
-	if len(torr.Info.Pieces)%20 != 0 {
+	if len(t.Info.Pieces)%20 != 0 {
 		return TorrentMetadata{}, fmt.Errorf("could not get torrent info: invalid pieces")
 	}
 
 	idx := 0
-	pieceHashes := make([]string, len(torr.Info.Pieces)/20)
-	for i := 0; i < len(torr.Info.Pieces); i += 20 {
-		pieceHashes[idx] = torr.Info.Pieces[i : i+20]
+	pieceHashes := make([]string, len(t.Info.Pieces)/20)
+	for i := 0; i < len(t.Info.Pieces); i += 20 {
+		pieceHashes[idx] = t.Info.Pieces[i : i+20]
 		idx++
 	}
 
 	// Calculate info hash
-	infoHash, err := torr.CalculateInfoHash()
+	infoHash, err := t.InfoHash()
 	if err != nil {
 		return TorrentMetadata{}, fmt.Errorf("could not get torrent info: %w", err)
 	}
 
 	// Struct info
 	torrentInfo := TorrentMetadata{
-		Name:        torr.Info.Name,
-		TrackerURL:  torr.Announce,
-		Length:      torr.Info.Length,
+		Name:        t.Info.Name,
+		TrackerURL:  t.Announce,
+		Length:      t.Info.Length,
 		InfoHash:    hex.EncodeToString(infoHash),
-		PieceLength: torr.Info.PieceLength,
+		PieceLength: t.Info.PieceLength,
 		PieceHashes: pieceHashes,
 	}
 	return torrentInfo, nil
 }
 
 // String returns a formatted string representation of the TorrentMetadata, including metadata and piece hash details.
-func (tInfo *TorrentMetadata) String() string {
-	infoStr := "Name: " + tInfo.Name + "\n" +
-		"Tracker URL: " + tInfo.TrackerURL + "\n" +
-		"Length: " + strconv.Itoa(tInfo.Length) + "\n" +
-		"Info Hash: " + tInfo.InfoHash + "\n" +
-		"Piece Length: " + strconv.Itoa(tInfo.PieceLength) + "\n" +
+func (meta *TorrentMetadata) String() string {
+	infoStr := "Name: " + meta.Name + "\n" +
+		"Tracker URL: " + meta.TrackerURL + "\n" +
+		"Length: " + strconv.Itoa(meta.Length) + "\n" +
+		"Info Hash: " + meta.InfoHash + "\n" +
+		"Piece Length: " + strconv.Itoa(meta.PieceLength) + "\n" +
 		"Piece Hashes:"
 
-	if len(tInfo.PieceHashes) == 0 {
+	if len(meta.PieceHashes) == 0 {
 		infoStr += " (empty)"
-	} else if len(tInfo.PieceHashes) == 1 {
-		infoStr += " " + utils.Base16ToHex(tInfo.PieceHashes[0])
+	} else if len(meta.PieceHashes) == 1 {
+		infoStr += " " + utils.Base16ToHex(meta.PieceHashes[0])
 	} else {
-		for n, hash := range tInfo.PieceHashes {
+		for n, hash := range meta.PieceHashes {
 			if n == 5 { // print 5 hashes at maximum
-				remain := strconv.Itoa(len(tInfo.PieceHashes) - n)
+				remain := strconv.Itoa(len(meta.PieceHashes) - n)
 				infoStr += "\n... (" + remain + " more)"
 				break
 			}

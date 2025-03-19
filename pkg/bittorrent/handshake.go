@@ -15,6 +15,15 @@ type Handshake struct {
 	PeerID [20]byte
 }
 
+// NewHandshake creates a new Handshake instance with the given infoHash and peerID, using the TorrentProtocol.
+func NewHandshake(infoHash []byte, peerID []byte) *Handshake {
+	return &Handshake{
+		Protocol: TorrentProtocol,
+		InfoHash: [20]byte(infoHash),
+		PeerID:   [20]byte(peerID),
+	}
+}
+
 // DeserializeHandshake parses a serialized handshake buffer and returns the Handshake struct.
 func DeserializeHandshake(buf []byte) (*Handshake, error) {
 	if len(buf) == 0 {

@@ -10,10 +10,11 @@ type Color string
 
 const (
 	Reset   Color = "\033[0m"
-	Red     Color = "\033[31m"
-	Green   Color = "\033[32m"
-	Blue    Color = "\033[34m"
-	Magenta Color = "\033[35m"
+	Red     Color = "\033[31;1m"
+	Green   Color = "\033[32;1m"
+	Blue    Color = "\033[34;1m"
+	Magenta Color = "\033[35;1m"
+	Gray    Color = "\033[37;1m"
 )
 
 const logLevelLength = 5
@@ -25,6 +26,7 @@ const (
 	Info  LogLevel = "INFO"
 	Warn  LogLevel = "WARN"
 	Error LogLevel = "ERROR"
+	Fatal LogLevel = "FATAL"
 )
 
 type Logger struct {
@@ -40,28 +42,24 @@ type Config struct {
 	mux         *sync.Mutex
 }
 
-func NewLogger(config *Config) *Logger {
-	if config == nil {
-		config = &Config{
-			Development: false,
-			SaveLogs:    false,
-			LogDir:      "",
-			LogFileName: "",
-			PadLen:      3,
-		}
+func NewLogger(config Config) *Logger {
+	if config.PadLen <= 0 {
+		config.PadLen = 3
 	}
 	config.mux = &sync.Mutex{}
 
-	return &Logger{*config}
+	return &Logger{config}
 }
 
 func (l *Logger) getTimestamp() string {
-	return time.Now().Format("2006-01-02 15:04:05 -0700")
+	ts := time.Now().Format("2006-01-02 15:04:05 -0700")
+	return string(Gray) + ts + string(Reset)
 }
 
 func (l *Logger) getType(t LogLevel) string {
-	text := utils.RPad(string(t), logLevelLength+l.PadLen, " ")
-	text = utils.LPad(text, l.PadLen, " ")
+	pad := logLevelLength + l.PadLen
+	text := utils.RPad(string(t), pad, " ")
+	text = utils.LPad(text, pad+l.PadLen, " ")
 
 	color := Blue
 	switch t {
@@ -72,6 +70,7 @@ func (l *Logger) getType(t LogLevel) string {
 	case Warn:
 		color = Magenta
 	case Error:
+	case Fatal:
 		color = Red
 	}
 
@@ -107,7 +106,7 @@ func (l *Logger) Error(msg string) {
 }
 
 func (l *Logger) Fatal(msg string) {
-	msg = l.getTimestamp() + l.getType(Error) + msg
+	msg = l.getTimestamp() + l.getType(Fatal) + msg
 	l.log(msg)
 	panic(nil)
 }

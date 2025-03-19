@@ -11,36 +11,37 @@ import (
 	"strconv"
 )
 
-// AnnounceResponse represents the response from a tracker for a torrent announce request.
-type AnnounceResponse struct {
+// PeersList represents the response from a tracker, containing a parsed peers list and its interval.
+type PeersList struct {
 	// Interval specifies the wait time in seconds before the next tracker request.
 	Interval int
 	// Peers contains the list of available peers provided by the tracker.
 	Peers []Peer
 }
 
-// SuccessResponse represents a successful response from a tracker with bencoded data.
-type SuccessResponse struct {
+// successResponse represents a successful response from a tracker with bencoded data.
+type successResponse struct {
 	// Interval specifies the interval in seconds at which the client should contact the tracker for updates.
 	Interval int `bencode:"interval"`
 	// Peers contains the list of encoded peers in a compact format (6 bytes each: 4 for IP and 2 for port).
 	Peers string `bencode:"peers"`
 }
 
-// FailedResponse represents an error response from a tracker with bencoded data.
-type FailedResponse struct {
+// failedResponse represents an error response from a tracker with bencoded data.
+type failedResponse struct {
 	// FailureReason contains the tracker-provided message detailing why the request failed.
 	FailureReason string `bencode:"failure reason"`
 }
 
-// BuildAnnounceURL constructs a tracker announce URL with query parameters based on torrent and peer details.
-func (t *TorrentFile) BuildAnnounceURL(id []byte, port uint16) (string, error) {
+// TrackerURL constructs a tracker URL with query parameters based on torrent and peer details.
+func (t *TorrentFile) TrackerURL(id []byte, port uint16) (string, error) {
 	base, err := url.Parse(t.Announce)
 	if err != nil {
 		return "", fmt.Errorf("could not parse announce url: %w", err)
 	}
 
-	hash, err := t.CalculateInfoHash()
+	// TODO: implement compact parameter
+	hash, err := t.InfoHash()
 	params := url.Values{
 		"info_hash":  []string{string(hash)},
 		"peer_id":    []string{string(id)},
@@ -54,8 +55,8 @@ func (t *TorrentFile) BuildAnnounceURL(id []byte, port uint16) (string, error) {
 	return base.String(), nil
 }
 
-// FetchResponse sends a GET request to the given announce URL and retrieves the tracker response as a byte slice.
-func (t *TorrentFile) FetchResponse(announceURL string) ([]byte, error) {
+// FetchTracker sends a GET request to the given tracker URL and retrieves the tracker response as a byte slice.
+func (t *TorrentFile) FetchTracker(announceURL string) ([]byte, error) {
 	res, err := http.Get(announceURL)
 	if err != nil {
 		return nil, fmt.Errorf("error on tracker request: %w", err)
@@ -69,37 +70,37 @@ func (t *TorrentFile) FetchResponse(announceURL string) ([]byte, error) {
 	return data, nil
 }
 
-// ParseResponse parses the tracker's response data, extracts interval and peer information, and handles errors.
-func (t *TorrentFile) ParseResponse(data []byte, timeout int) (AnnounceResponse, error) {
+// ParseTrackerResponse parses the tracker's response data, extracts interval and peer information, and handles errors.
+func (t *TorrentFile) ParseTrackerResponse(data []byte, timeout int) (PeersList, error) {
 	if timeout <= 0 {
 		timeout = DefaultTimeout
 	}
 
 	// Check failure
-	failed := FailedResponse{}
+	failed := failedResponse{}
 	err := bencode.Unmarshal(data, &failed)
 	if err != nil {
-		return AnnounceResponse{}, fmt.Errorf("could not unmarshal tracker response: %w", err)
+		return PeersList{}, fmt.Errorf("could not unmarshal tracker response: %w", err)
 	}
 	if failed.FailureReason != "" {
-		return AnnounceResponse{}, fmt.Errorf("tracker request failed: %s", failed.FailureReason)
+		return PeersList{}, fmt.Errorf("tracker request failed: %s", failed.FailureReason)
 	}
 
 	// Get interval and peer list
-	success := SuccessResponse{}
+	success := successResponse{}
 	err = bencode.Unmarshal(data, &success)
 	if err != nil {
-		return AnnounceResponse{}, fmt.Errorf("could not unmarshal tracker response: %w", err)
+		return PeersList{}, fmt.Errorf("could not unmarshal tracker response: %w", err)
 	}
 
 	// Check if peers list is valid (6 bytes = 4 for IP and 2 for port)
 	if len(success.Peers)%6 != 0 {
-		return AnnounceResponse{}, fmt.Errorf("received malformed peers list")
+		return PeersList{}, fmt.Errorf("received malformed peers list")
 	}
 
 	// Parse interval and peer list
 	idx := 0
-	trackerResponse := AnnounceResponse{
+	trackerResponse := PeersList{
 		Interval: success.Interval,
 		Peers:    make([]Peer, len(success.Peers)/6),
 	}
@@ -110,26 +111,4 @@ func (t *TorrentFile) ParseResponse(data []byte, timeout int) (AnnounceResponse,
 		idx++
 	}
 	return trackerResponse, nil
-}
-
-// AnnounceToTracker sends an announce request to the torrent's tracker to register the peer and fetch tracker responses.
-func (t *TorrentFile) AnnounceToTracker(peer *Peer, timeout int) (AnnounceResponse, error) {
-	// Get peer ID
-	id, err := GeneratePeerID()
-	if err != nil {
-		return AnnounceResponse{}, err
-	}
-
-	// Tracker URL
-	trackerURL, err := t.BuildAnnounceURL(id, peer.Port)
-	if err != nil {
-		return AnnounceResponse{}, err
-	}
-
-	// Get tracker URL and request data
-	data, err := t.FetchResponse(trackerURL)
-	if err != nil {
-		return AnnounceResponse{}, fmt.Errorf("could not get tracker response: %w", err)
-	}
-	return t.ParseResponse(data, timeout)
 }
