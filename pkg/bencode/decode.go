@@ -48,6 +48,9 @@ func (r *bReader) decodeInt() (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("could not decode integer '%s': %w", s, err)
 	}
+	if integer < 0 {
+		return 0, fmt.Errorf("integer is negative: %d", integer)
+	}
 	return integer, nil
 }
 
