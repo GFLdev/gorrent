@@ -42,14 +42,13 @@ func (r *bReader) decodeInt() (int, error) {
 
 	if len(s) == 2 {
 		return 0, fmt.Errorf("bencode integer '%s' is empty", s)
+	} else if len(s) > 3 && s[1] == '0' {
+		return 0, fmt.Errorf("bencode integer '%s' has leading 0", s)
 	}
 
 	integer, err := strconv.Atoi(string(s[1 : len(s)-1]))
 	if err != nil {
 		return 0, fmt.Errorf("could not decode integer '%s': %w", s, err)
-	}
-	if integer < 0 {
-		return 0, fmt.Errorf("integer is negative: %d", integer)
 	}
 	return integer, nil
 }
@@ -101,6 +100,7 @@ func (r *bReader) decodeList() ([]interface{}, error) {
 		list = append(list, val)
 	}
 
+	r.pos++
 	return list, nil
 }
 
@@ -132,12 +132,13 @@ func (r *bReader) decodeDict() (map[string]interface{}, error) {
 		dict[key] = val
 	}
 
+	r.pos++
 	return dict, nil
 }
 
 // decodeElement decodes a generic bencoded element at the current position and returns it as an interface.
 func (r *bReader) decodeElement() (interface{}, error) {
-	if r.data[r.pos:] == nil || len(r.data[r.pos:]) == 0 {
+	if len(r.data[r.pos:]) == 0 {
 		return nil, errors.New("entry is empty")
 	}
 
@@ -148,10 +149,10 @@ func (r *bReader) decodeElement() (interface{}, error) {
 		return r.decodeList()
 	case firstChar == 'd':
 		return r.decodeDict()
-	case firstChar >= '0' && firstChar <= '9':
+	case firstChar >= '1' && firstChar <= '9':
 		return r.decodeString()
 	default:
-		return nil, errors.New("invalid type encountered: character not 'i', 'l', 'd', or '0'-'9'")
+		return nil, errors.New("invalid type encountered: character not 'i', 'l', 'd', or '1'-'9'")
 	}
 }
 

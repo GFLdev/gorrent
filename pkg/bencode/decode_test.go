@@ -10,13 +10,13 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const SimNumbers = 100000
+const SimNumbers = 1000000
 
 const (
-	str int = iota
-	integer
-	list
-	dict
+	Str int = iota
+	Int
+	List
+	Dict
 )
 
 type testString struct {
@@ -51,14 +51,14 @@ type testDict struct {
 	bCode     string
 }
 
-func printSeed(seed int64) string {
-	return "seed: " + strconv.Itoa(int(seed))
+func formatInfo(seed int64, bCode string) string {
+	return "seed: " + strconv.Itoa(int(seed)) + "\nbencode: " + bCode
 }
 
 func switchNestedData(randType int, data *any, bCode *string, level int) bool {
 	invalid := false
 	switch randType {
-	case str:
+	case Str:
 		test := genTestString()
 		if test.randLen <= len(test.randStr) {
 			*data = test.randStr[:test.randLen]
@@ -69,21 +69,21 @@ func switchNestedData(randType int, data *any, bCode *string, level int) bool {
 		if isStringInvalid(test) {
 			invalid = true
 		}
-	case integer:
+	case Int:
 		test := genTestInt()
 		*data = test.randInt
 		*bCode += test.bCode
 		if isIntInvalid(test) {
 			invalid = true
 		}
-	case list:
+	case List:
 		test := genTestList(level + 1)
 		*data = test.data
 		*bCode += test.bCode
 		if isListInvalid(test) {
 			invalid = true
 		}
-	case dict:
+	case Dict:
 		test := genTestDict(level + 1)
 		*data = test.data
 		*bCode += test.bCode
@@ -96,20 +96,30 @@ func switchNestedData(randType int, data *any, bCode *string, level int) bool {
 	return invalid
 }
 
+func isListEmpty(bCode string) bool {
+	return bCode[0] == 'l' && bCode[1] == 'e'
+}
+
+func isDictEmpty(bCode string) bool {
+	return bCode[0] == 'd' && bCode[1] == 'e'
+}
+
 func isStringInvalid(s testString) bool {
 	return len(s.randStr) < s.randLen || s.delim != ":"
 }
 
 func isIntInvalid(i testInt) bool {
-	return i.start != "i" || i.end != "e" || i.randInt < 0
+	return i.start != "i" || i.end != "e" || (len(i.bCode) > 3 && i.bCode[1] == '0')
 }
 
 func isListInvalid(l testList) bool {
-	return l.start != "l" || l.end != "e" || l.invalid
+	isEmpty := isListEmpty(l.bCode)
+	return (l.start != "l" || l.end != "e" || l.invalid) && !isEmpty
 }
 
 func isDictInvalid(d testDict) bool {
-	return d.start != "d" || d.end != "e" || d.invalid
+	isEmpty := isDictEmpty(d.bCode)
+	return (d.start != "d" || d.end != "e" || d.invalid) && !isEmpty
 }
 
 func genTestString() testString {
@@ -143,7 +153,7 @@ func genTestInt() testInt {
 
 func genTestList(level int) testList {
 	listLen := gofakeit.IntN(10) // max of 10 items
-	data := make([]any, listLen)
+	data := make([]interface{}, listLen)
 	bCodeData := ""
 	invalid := false
 	for i := range listLen {
@@ -158,6 +168,10 @@ func genTestList(level int) testList {
 	end := gofakeit.LetterN(1)
 	bCode := start + bCodeData + end
 
+	if isListEmpty(bCode) {
+		data = make([]any, 0)
+	}
+
 	return testList{
 		data:      data,
 		bCodeData: bCodeData,
@@ -170,7 +184,7 @@ func genTestList(level int) testList {
 
 func genTestDict(level int) testDict {
 	dictLen := gofakeit.IntN(10) // max of 10 items
-	data := make(map[string]any, dictLen)
+	data := make(map[string]interface{}, dictLen)
 	bCodeData := ""
 	invalid := false
 	for range dictLen {
@@ -194,6 +208,10 @@ func genTestDict(level int) testDict {
 	end := gofakeit.LetterN(1)
 	bCode := start + bCodeData + end
 
+	if isDictEmpty(bCode) {
+		data = make(map[string]interface{})
+	}
+
 	return testDict{
 		data:      data,
 		bCodeData: bCodeData,
@@ -215,10 +233,10 @@ func TestDecodeString(t *testing.T) {
 		test := genTestString()
 		decoded, err := Decode([]byte(test.bCode))
 		if isStringInvalid(test) {
-			assert.Error(t, err, printSeed(seed)+"\nBencode: "+test.bCode)
+			assert.Error(t, err, formatInfo(seed, test.bCode))
 		} else {
-			if assert.NoError(t, err, printSeed(seed)) {
-				assert.Equal(t, test.randStr[:test.randLen], decoded.(string), printSeed(seed))
+			if assert.NoError(t, err, formatInfo(seed, test.bCode)) {
+				assert.Equal(t, test.randStr[:test.randLen], decoded.(string), formatInfo(seed, test.bCode))
 			}
 		}
 	}
@@ -235,10 +253,10 @@ func TestDecodeInt(t *testing.T) {
 		test := genTestInt()
 		decoded, err := Decode([]byte(test.bCode))
 		if isIntInvalid(test) {
-			assert.Error(t, err, printSeed(seed)+"\nBencode: "+test.bCode)
+			assert.Error(t, err, formatInfo(seed, test.bCode))
 		} else {
-			if assert.NoError(t, err, printSeed(seed)) {
-				assert.Equal(t, test.randInt, decoded.(int), printSeed(seed))
+			if assert.NoError(t, err, formatInfo(seed, test.bCode)) {
+				assert.Equal(t, test.randInt, decoded.(int), formatInfo(seed, test.bCode))
 			}
 		}
 	}
@@ -264,13 +282,13 @@ func TestDecodeList(t *testing.T) {
 			if test.bCode[1] == byte('e') {
 				continue
 			}
-			assert.Error(t, err, printSeed(seed)+"\nBencode: "+test.bCode)
+			assert.Error(t, err, formatInfo(seed, test.bCode))
 		} else {
-			if assert.NoError(t, err, printSeed(seed)) {
+			if assert.NoError(t, err, formatInfo(seed, test.bCode)) {
 				if len(test.data) == 0 {
-					assert.Equal(t, make([]interface{}, 0), decoded, printSeed(seed))
+					assert.Equal(t, make([]interface{}, 0), decoded, formatInfo(seed, test.bCode))
 				} else {
-					assert.Equal(t, test.bCodeData, decoded.([]any), printSeed(seed))
+					assert.Equal(t, test.data, decoded, formatInfo(seed, test.bCode))
 				}
 			}
 		}
@@ -297,13 +315,13 @@ func TestDecodeDict(t *testing.T) {
 			if test.bCode[1] == byte('e') {
 				continue
 			}
-			assert.Error(t, err, printSeed(seed)+"\nBencode: "+test.bCode)
+			assert.Error(t, err, formatInfo(seed, test.bCode))
 		} else {
-			if assert.NoError(t, err, printSeed(seed)) {
+			if assert.NoError(t, err, formatInfo(seed, test.bCode)) {
 				if len(test.data) == 0 {
-					assert.Equal(t, make(map[string]interface{}, 0), decoded, printSeed(seed))
+					assert.Equal(t, make(map[string]interface{}), decoded, formatInfo(seed, test.bCode))
 				} else {
-					assert.Equal(t, test.bCodeData, decoded.([]any), printSeed(seed))
+					assert.Equal(t, test.data, decoded, formatInfo(seed, test.bCode))
 				}
 			}
 		}
