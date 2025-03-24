@@ -8,19 +8,6 @@ import (
 	"sync"
 )
 
-// formatErrorSlice formats a slice of errors into a single string, enumerating each error with its index in the slice.
-func formatErrorSlice(errs []error) string {
-	if len(errs) == 1 {
-		return errs[0].Error()
-	}
-	str := "\n"
-	for i, err := range errs {
-		str += fmt.Sprintf("%d: %s\n", i+1, err.Error())
-	}
-	str = str[:len(str)-1]
-	return str
-}
-
 // encodeString encodes a string into a byte slice as bencode string.
 func encodeString(v interface{}) ([]byte, error) {
 	s, ok := v.(string)
@@ -56,10 +43,6 @@ func encodeInt(v interface{}) ([]byte, error) {
 
 // encodeList encodes an array into a byte slice as bencode list.
 func encodeList(v interface{}) ([]byte, error) {
-	var wg sync.WaitGroup
-	var mux sync.Mutex
-	var errs []error
-
 	// Type check and create []interface
 	if reflect.ValueOf(v).Kind() != reflect.Slice || reflect.ValueOf(v).Kind() == reflect.Array {
 		return nil, fmt.Errorf("cannot encode list: expected slice or array, got %s", reflect.TypeOf(v))
@@ -72,28 +55,13 @@ func encodeList(v interface{}) ([]byte, error) {
 	// Buffer and encoding each values concurrently
 	elem := make([][]byte, len(s))
 	totalBytes := 2
-	wg.Add(len(s))
 	for i, val := range s {
-		go func(idx int, val interface{}) {
-			defer wg.Done()
-			var err error
-
-			elem[idx], err = Encode(val)
-			if err != nil {
-				mux.Lock()
-				errs = append(errs, err)
-				mux.Unlock()
-				return
-			}
-
-			mux.Lock()
-			totalBytes += len(elem[idx])
-			mux.Unlock()
-		}(i, val)
-	}
-	wg.Wait()
-	if len(errs) > 0 {
-		return nil, fmt.Errorf("cannot encode list: %s", formatErrorSlice(errs))
+		var err error
+		elem[i], err = Encode(val)
+		if err != nil {
+			return nil, fmt.Errorf("cannot encode list: %w", err)
+		}
+		totalBytes += len(elem[i])
 	}
 
 	// Encoding the list
@@ -109,8 +77,6 @@ func encodeList(v interface{}) ([]byte, error) {
 // encodeLMap encodes a map into a byte slice as bencode dictionary.
 func encodeMap(v interface{}) ([]byte, error) {
 	var wg sync.WaitGroup
-	var mux sync.Mutex
-	var errs []error
 
 	// Type check and create keys and values array
 	if reflect.ValueOf(v).Kind() != reflect.Map {
@@ -133,40 +99,23 @@ func encodeMap(v interface{}) ([]byte, error) {
 
 	// Buffer and encoding each key-pair values concurrently
 	totalBytes := 2
-	wg.Add(len(m))
 	for key, val := range m {
-		go func(key string, val interface{}) {
-			defer wg.Done()
+		keyStr, err := encodeString(key)
+		if err != nil {
+			return nil, fmt.Errorf("cannot encode map: %w", err)
+		}
 
-			keyStr, err := encodeString(key)
-			if err != nil {
-				mux.Lock()
-				errs = append(errs, err)
-				mux.Unlock()
-				return
-			}
+		valStr, err := Encode(val)
+		if err != nil {
+			return nil, fmt.Errorf("cannot encode map: %w", err)
+		}
 
-			valStr, err := Encode(val)
-			if err != nil {
-				mux.Lock()
-				errs = append(errs, err)
-				mux.Unlock()
-				return
-			}
-
-			mux.Lock()
-			m[key] = append(keyStr, valStr...)
-			totalBytes += len(keyStr) + len(valStr)
-			mux.Unlock()
-		}(key, val)
-	}
-	wg.Wait()
-
-	if len(errs) > 0 {
-		return nil, fmt.Errorf("cannot encode map: %s", formatErrorSlice(errs))
+		m[key] = append(keyStr, valStr...)
+		totalBytes += len(keyStr) + len(valStr)
 	}
 
 	// Encoding the map
+	wg.Wait()
 	encoded := make([]byte, totalBytes)
 	i := copy(encoded[:], "d")
 	for _, key := range sortedKeys {
